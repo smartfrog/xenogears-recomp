@@ -557,11 +557,17 @@ if(NOT VITA)
 else()
     target_sources(psx-runtime PRIVATE
         vita/stub/xg_render_stub.c
+        vita/sce_data_reserve.c
         src/mods/xenogears_field_pacing.c
         src/mods/xenogears_indexed_disc.cpp)
     target_include_directories(psx-runtime PRIVATE
         native_renderer/include
         src/mods)
+    # vita-elf-create appends the SCE module data at the end of the text
+    # segment and needs vaddr room there; reserve it deterministically instead
+    # of relying on where DATA_SEGMENT_ALIGN happens to land.
+    target_link_options(psx-runtime PRIVATE
+        "-Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/vita/vita-sce-data-reserve.ld")
 endif()
 if(TARGET psx-runtime-pgxp)
     add_custom_command(TARGET psx-runtime-pgxp POST_BUILD
@@ -592,11 +598,14 @@ if(TARGET psx-runtime-pgxp)
     else()
         target_sources(psx-runtime-pgxp PRIVATE
             vita/stub/xg_render_stub.c
+            vita/sce_data_reserve.c
             src/mods/xenogears_field_pacing.c
             src/mods/xenogears_indexed_disc.cpp)
         target_include_directories(psx-runtime-pgxp PRIVATE
             native_renderer/include
             src/mods)
+        target_link_options(psx-runtime-pgxp PRIVATE
+            "-Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/vita/vita-sce-data-reserve.ld")
     endif()
 endif()
 
