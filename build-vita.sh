@@ -27,7 +27,8 @@ if [[ ! -d "$VITASDK" ]]; then
     exit 1
 fi
 export PATH="$VITASDK/bin:$HOME/.local/bin:$PATH"
-for tool in arm-vita-eabi-gcc arm-vita-eabi-g++ vita-elf-create \
+for tool in arm-vita-eabi-gcc arm-vita-eabi-g++ arm-vita-eabi-readelf \
+        arm-vita-eabi-size vita-elf-create \
         vita-make-fself vita-mksfoex vita-pack-vpk; do
     command -v "$tool" &>/dev/null || {
         echo "!!> ERROR: required tool not on PATH: $tool (VITASDK=$VITASDK)"
@@ -82,9 +83,20 @@ else
         exit 1
     fi
     echo "==> [full] Configuring Vita full build in $BUILD_DIR..."
+    RECOMPILER="$ROOT/psxrecomp/recompiler/build/psxrecomp-game"
+    if [[ ! -x "$RECOMPILER" ]]; then
+        echo "!!> ERROR: host recompiler not built: $RECOMPILER"
+        echo "    It is required for AOT overlay generation. Build it first:"
+        echo "      cmake -S psxrecomp/recompiler -B psxrecomp/recompiler/build -G Ninja \\"
+        echo "        -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \\"
+        echo "        -DPSX_GAME_EXTRA_IDENTITY_SHA256=<disc-exe-sha256> \\"
+        echo "        -DPSX_GAME_MANIFEST_DIGEST_SHA256=<disc-exe-sha256>"
+        echo "      cmake --build psxrecomp/recompiler/build --target psxrecomp-game psxrecomp-bios --parallel 8"
+        exit 1
+    fi
     cmake -S "$ROOT" -B "$BUILD_DIR" "${CMAKE_ARGS[@]}" \
         -DXG_DISC_IMAGE="$DISC_IMAGE" \
-        -DXG_RECOMPILER_EXECUTABLE="$ROOT/psxrecomp/recompiler/build/psxrecomp-game"
+        -DXG_RECOMPILER_EXECUTABLE="$RECOMPILER"
     echo "==> [full] Building..."
     cmake --build "$BUILD_DIR" --parallel "$PARALLEL" --target psx-runtime
     ELF="$BUILD_DIR/XenogearsRecomp"

@@ -466,7 +466,9 @@ if(WIN32 OR MINGW)
     add_compile_definitions(SDL_MAIN_HANDLED=1)
 endif()
 
-add_subdirectory(native_renderer)
+if(NOT VITA)
+    add_subdirectory(native_renderer)
+endif()
 
 if(BUILD_TESTING)
     add_executable(xg_guest_render_native_stream
@@ -501,6 +503,14 @@ if(NOT GAME_FULL_C)
         "  ../psxrecomp/recompiler/build/psxrecomp-game --config game.toml")
 endif()
 
+if(VITA)
+    # Vita Phase 0 size tuning: the generated game/overlay code dominates the
+    # image and its load-time relocation table; -Os shrinks both. Runtime TUs
+    # keep the Release optimization level.
+    set_source_files_properties(${GAME_FULL_C} ${XG_OVERLAY_STATIC_SOURCES}
+        PROPERTIES COMPILE_OPTIONS "-Os")
+endif()
+
 # Optional box art for the launcher — absent in fresh clones (gitignored,
 # copyrighted); the launcher has a built-in fallback. Must be set before
 # psxrecomp_add_runtime_target, which wires the launcher from the nested
@@ -525,32 +535,8 @@ add_custom_command(TARGET psx-runtime POST_BUILD
     COMMENT "Staging byte-free static overlay coverage metadata"
     VERBATIM)
 
-target_link_libraries(psx-runtime PRIVATE
-    xg_visual_state
-    xg_render_ir
-    xg_render_static_auth
-    xg_field_character_runtime
-    xg_render_fragment_runtime
-    xg_render_resident_capture
-    xg_render_battle_fx)
-target_sources(psx-runtime PRIVATE
-        native_renderer/src/core/xg_native_render_baseline.c
-        src/mods/xenogears_field_pacing.c
-        src/mods/xenogears_indexed_disc.cpp)
-target_include_directories(psx-runtime PRIVATE
-    native_renderer/include
-    src/mods)
-target_compile_definitions(psx-runtime PRIVATE
-    PSX_INPUT_REPLAY_XG_BASELINE=1
-    PSX_INPUT_REPLAY_XG_AUTH_PROOF=1)
-if(TARGET psx-runtime-pgxp)
-    add_custom_command(TARGET psx-runtime-pgxp POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "${XG_OVERLAY_STATIC_COVERAGE}"
-            "$<TARGET_FILE_DIR:psx-runtime-pgxp>/overlays_static_coverage.json"
-        COMMENT "Staging byte-free static overlay coverage metadata"
-        VERBATIM)
-    target_link_libraries(psx-runtime-pgxp PRIVATE
+if(NOT VITA)
+    target_link_libraries(psx-runtime PRIVATE
         xg_visual_state
         xg_render_ir
         xg_render_static_auth
@@ -558,16 +544,60 @@ if(TARGET psx-runtime-pgxp)
         xg_render_fragment_runtime
         xg_render_resident_capture
         xg_render_battle_fx)
-    target_sources(psx-runtime-pgxp PRIVATE
+    target_sources(psx-runtime PRIVATE
         native_renderer/src/core/xg_native_render_baseline.c
         src/mods/xenogears_field_pacing.c
         src/mods/xenogears_indexed_disc.cpp)
-    target_include_directories(psx-runtime-pgxp PRIVATE
+    target_include_directories(psx-runtime PRIVATE
         native_renderer/include
         src/mods)
-    target_compile_definitions(psx-runtime-pgxp PRIVATE
+    target_compile_definitions(psx-runtime PRIVATE
         PSX_INPUT_REPLAY_XG_BASELINE=1
         PSX_INPUT_REPLAY_XG_AUTH_PROOF=1)
+else()
+    target_sources(psx-runtime PRIVATE
+        vita/stub/xg_render_stub.c
+        src/mods/xenogears_field_pacing.c
+        src/mods/xenogears_indexed_disc.cpp)
+    target_include_directories(psx-runtime PRIVATE
+        native_renderer/include
+        src/mods)
+endif()
+if(TARGET psx-runtime-pgxp)
+    add_custom_command(TARGET psx-runtime-pgxp POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${XG_OVERLAY_STATIC_COVERAGE}"
+            "$<TARGET_FILE_DIR:psx-runtime-pgxp>/overlays_static_coverage.json"
+        COMMENT "Staging byte-free static overlay coverage metadata"
+        VERBATIM)
+    if(NOT VITA)
+        target_link_libraries(psx-runtime-pgxp PRIVATE
+            xg_visual_state
+            xg_render_ir
+            xg_render_static_auth
+            xg_field_character_runtime
+            xg_render_fragment_runtime
+            xg_render_resident_capture
+            xg_render_battle_fx)
+        target_sources(psx-runtime-pgxp PRIVATE
+            native_renderer/src/core/xg_native_render_baseline.c
+            src/mods/xenogears_field_pacing.c
+            src/mods/xenogears_indexed_disc.cpp)
+        target_include_directories(psx-runtime-pgxp PRIVATE
+            native_renderer/include
+            src/mods)
+        target_compile_definitions(psx-runtime-pgxp PRIVATE
+            PSX_INPUT_REPLAY_XG_BASELINE=1
+            PSX_INPUT_REPLAY_XG_AUTH_PROOF=1)
+    else()
+        target_sources(psx-runtime-pgxp PRIVATE
+            vita/stub/xg_render_stub.c
+            src/mods/xenogears_field_pacing.c
+            src/mods/xenogears_indexed_disc.cpp)
+        target_include_directories(psx-runtime-pgxp PRIVATE
+            native_renderer/include
+            src/mods)
+    endif()
 endif()
 
 if(BUILD_TESTING)
