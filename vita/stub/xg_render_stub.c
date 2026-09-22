@@ -241,13 +241,16 @@ void psx_xg_render_auth_complete_ordering_table(uint32_t start_addr, uint32_t tr
     (void)transferred_words;
 }
 
-/* xg_render_auth_runtime_control.h */
+/* xg_render_auth_runtime_control.h
+ * The runtime calls configure unconditionally (the original render path still
+ * installs inert auth hooks), so accept-and-ignore: returning failure here
+ * aborts boot before the guest ever runs. */
 bool psx_xg_render_auth_configure(GuestRenderRenderMode requested_render_mode, PsxXgRenderPresentationGate presentation_gate, void *presentation_user_data)
 {
     (void)requested_render_mode;
     (void)presentation_gate;
     (void)presentation_user_data;
-    return 0;
+    return 1;
 }
 
 /* xg_render_auth_runtime_control.h */
@@ -258,7 +261,7 @@ bool psx_xg_render_auth_configure_native_view(bool enabled, uint16_t aspect_num,
     (void)aspect_den;
     (void)canonical_width;
     (void)canonical_height;
-    return 0;
+    return 1;
 }
 
 /* xg_render_auth_runtime_control.h */
@@ -322,10 +325,12 @@ bool psx_xg_render_auth_note_vram_event(uint64_t guest_vblank_sequence, uint64_t
 }
 
 /* xg_render_auth_runtime_control.h */
+/* The real implementation returns true whenever the request is not a native
+ * UI-OT submission; dma.c treats false as a fatal halt. */
 bool psx_xg_render_auth_prepare_ui_ot(uint32_t start_addr)
 {
     (void)start_addr;
-    return 0;
+    return 1;
 }
 
 /* xg_render_auth_runtime_diagnostics.h */
@@ -666,11 +671,13 @@ XgRenderResourceResult xg_render_resource_view(XgRenderResourceHandle handle, Xg
     return 0;
 }
 
-/* xg_render_runtime_host_services.h */
+/* xg_render_runtime_host_services.h
+ * Same contract as the real library: a non-NULL services struct is accepted;
+ * the stub simply never calls back into it. */
 bool xg_render_runtime_configure_host_services(const XgRenderRuntimeHostServices *services)
 {
-    (void)services;
-    return 0;
+    if (services == NULL) return 0;
+    return 1;
 }
 
 /* xg_render_semantic_compositor.h */

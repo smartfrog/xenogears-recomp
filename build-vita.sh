@@ -121,6 +121,7 @@ vita-elf-create "$BASE" "$BASE.velf"
 vita-make-fself "$BASE.velf" eboot.bin
 vita-mksfoex -s TITLE_ID=XGEN00001 -s APP_VER=00.01 "XenogearsRecomp" app.sfo
 vita-pack-vpk -s app.sfo -b eboot.bin \
+    -a "$ROOT/game.toml=game.toml" \
     -a "$ROOT/psxrecomp/bios/openbios.bin=bios/openbios.bin" \
     -a "$ROOT/psxrecomp/bios/OpenBIOS.LICENSE=bios/OpenBIOS.LICENSE" \
     XenogearsRecomp.vpk

@@ -558,6 +558,7 @@ else()
     target_sources(psx-runtime PRIVATE
         vita/stub/xg_render_stub.c
         vita/sce_data_reserve.c
+        vita/vita_module_params.c
         src/mods/xenogears_field_pacing.c
         src/mods/xenogears_indexed_disc.cpp)
     target_include_directories(psx-runtime PRIVATE
@@ -599,6 +600,7 @@ if(TARGET psx-runtime-pgxp)
         target_sources(psx-runtime-pgxp PRIVATE
             vita/stub/xg_render_stub.c
             vita/sce_data_reserve.c
+            vita/vita_module_params.c
             src/mods/xenogears_field_pacing.c
             src/mods/xenogears_indexed_disc.cpp)
         target_include_directories(psx-runtime-pgxp PRIVATE
