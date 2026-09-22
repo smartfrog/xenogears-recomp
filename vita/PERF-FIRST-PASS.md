@@ -63,6 +63,13 @@ Artifact: `build-vita/XenogearsRecomp.vpk`, staged for hardware as
     from present cost and detects interpreted (non-native) guest execution.
 - `psxrecomp/runtime/src/mod_runtime.cpp`, `mod_packages.{h,cpp}`: the digest
   skip described above.
+- `psxrecomp/runtime/src/frame_pacing.c` (adopted from the A/B round): the
+  pacer's final sub-2 ms tail is no longer spun on under `__vita__`; it yields
+  in ≤500 µs slices (`psx_host_sleep_micros` → `sceKernelDelayThread`). The
+  loop re-reads the clock and exits at the deadline or when no time is left
+  (no livelock; overshoot only ever lands late by the kernel's sleep
+  granularity). `next_deadline == 0` still returns before it, so the first
+  frame is never delayed. Desktop keeps the original spin verbatim.
 
 ## Audits (no code change)
 
@@ -88,8 +95,11 @@ Artifact: `build-vita/XenogearsRecomp.vpk`, staged for hardware as
 ### CPU saturation / spin-waits
 
 - Frame pacing (`frame_pacing.c`) sleeps with `nanosleep` in ≤1 ms chunks
-  (newlib `nanosleep` → `sceKernelDelayThread`, a real block) and spins only
-  the final sub-2 ms before the deadline (~3–6 % of one core).
+  (newlib `nanosleep` → `sceKernelDelayThread`, a real block). The final
+  sub-2 ms tail used to be a busy-wait; it is now ≤500 µs
+  `sceKernelDelayThread` slices under `__vita__` (the desktop path keeps the
+  original spin verbatim), so a paced frame no longer burns a core and the
+  system is no longer starved while the app runs.
 - No unbounded busy-wait in the main loop or the vblank/present path.
 - Background threads: SDL audio pull thread (blocks in `sceAudioOutOutput`),
   SDL joystick (no thread; `VITA_JoystickDetect` is empty), debug-server phase
