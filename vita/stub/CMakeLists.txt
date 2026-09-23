@@ -45,3 +45,9 @@ psxrecomp_add_runtime_target(psx-runtime
     PRELOADED_MODS_DIR NONE
 )
 target_include_directories(psx-runtime PRIVATE "${XG_REPO_ROOT}/native_renderer/include")
+# Same Vita hot-path defines as the full build (repo-root CMakeLists.txt): the
+# stub target exists to validate the Vita codegen path, so it must exercise the
+# same generated-code options.
+target_compile_definitions(psx-runtime PRIVATE
+    PSX_NO_NATIVE_PROVENANCE=1
+    PSX_VITA_HOT_PATH=1)

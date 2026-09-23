@@ -503,12 +503,19 @@ if(NOT GAME_FULL_C)
         "  ../psxrecomp/recompiler/build/psxrecomp-game --config game.toml")
 endif()
 
-if(VITA)
-    # Vita Phase 0 size tuning: the generated game/overlay code dominates the
-    # image and its load-time relocation table; -Os shrinks both. Runtime TUs
-    # keep the Release optimization level.
+# Generated game/overlay TU optimization. Empty (the desktop default) leaves
+# the target-level Release flags untouched, so desktop command lines and
+# objects are unchanged. Vita pins -Os: the generated code dominates both the
+# image and its load-time relocation table. Override with
+# -DXG_GENERATED_TU_OPT=... to A/B a level without editing this file.
+set(XG_GENERATED_TU_OPT "" CACHE STRING
+    "Optimization flags for the generated game/overlay TUs (empty = target default)")
+if(VITA AND NOT XG_GENERATED_TU_OPT)
+    set(XG_GENERATED_TU_OPT "-Os")
+endif()
+if(XG_GENERATED_TU_OPT)
     set_source_files_properties(${GAME_FULL_C} ${XG_OVERLAY_STATIC_SOURCES}
-        PROPERTIES COMPILE_OPTIONS "-Os")
+        PROPERTIES COMPILE_OPTIONS "${XG_GENERATED_TU_OPT}")
 endif()
 
 # Optional box art for the launcher — absent in fresh clones (gitignored,
@@ -564,6 +571,16 @@ else()
     target_include_directories(psx-runtime PRIVATE
         native_renderer/include
         src/mods)
+    # Vita hot-path build. The native renderer is compiled out here
+    # (XG_RENDER_NATIVE=OFF), so its two provenance channels can never be
+    # enabled: their per-ALU/load/store hooks in the generated code are dead
+    # weight (-26% generated text measured on one shard). PSX_VITA_HOT_PATH
+    # additionally forces the per-instruction timing leaves inline, which
+    # collapses psx_cyc_step's three nested calls into its single shared copy.
+    # Both defines are Vita-only, so desktop objects are unchanged.
+    target_compile_definitions(psx-runtime PRIVATE
+        PSX_NO_NATIVE_PROVENANCE=1
+        PSX_VITA_HOT_PATH=1)
     # vita-elf-create appends the SCE module data at the end of the text
     # segment and needs vaddr room there; reserve it deterministically instead
     # of relying on where DATA_SEGMENT_ALIGN happens to land.
