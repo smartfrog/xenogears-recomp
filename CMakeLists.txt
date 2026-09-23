@@ -518,6 +518,15 @@ if(XG_GENERATED_TU_OPT)
         PROPERTIES COMPILE_OPTIONS "${XG_GENERATED_TU_OPT}")
 endif()
 
+# Vita A/B lever, DEFAULT OFF: force-inline the whole per-instruction cycle
+# cascade (psx_cyc_base/deps/step + psx_slice_block + the icache hit path) at
+# every call site. Measured on hardware as +14.8 MB SELF and slower than the
+# shipped baseline, which is why the default is the leaf-only
+# PSX_VITA_HOT_PATH. See vita/PERF-THROUGHPUT.md "measured and rejected".
+option(PSX_VITA_TIGHT_INLINE
+    "Vita: inline the whole per-instruction cycle cascade (measured slower; A/B lever)"
+    OFF)
+
 # Optional box art for the launcher — absent in fresh clones (gitignored,
 # copyrighted); the launcher has a built-in fallback. Must be set before
 # psxrecomp_add_runtime_target, which wires the launcher from the nested
@@ -581,6 +590,9 @@ else()
     target_compile_definitions(psx-runtime PRIVATE
         PSX_NO_NATIVE_PROVENANCE=1
         PSX_VITA_HOT_PATH=1)
+    if(PSX_VITA_TIGHT_INLINE)
+        target_compile_definitions(psx-runtime PRIVATE PSX_VITA_TIGHT_INLINE=1)
+    endif()
     # vita-elf-create appends the SCE module data at the end of the text
     # segment and needs vaddr room there; reserve it deterministically instead
     # of relying on where DATA_SEGMENT_ALIGN happens to land.

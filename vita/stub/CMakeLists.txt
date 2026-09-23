@@ -51,3 +51,6 @@ target_include_directories(psx-runtime PRIVATE "${XG_REPO_ROOT}/native_renderer/
 target_compile_definitions(psx-runtime PRIVATE
     PSX_NO_NATIVE_PROVENANCE=1
     PSX_VITA_HOT_PATH=1)
+if(PSX_VITA_TIGHT_INLINE)
+    target_compile_definitions(psx-runtime PRIVATE PSX_VITA_TIGHT_INLINE=1)
+endif()

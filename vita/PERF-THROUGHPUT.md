@@ -167,7 +167,7 @@ optimize. Estimated ≤ 4 % of the budget; left alone.
 
 ## 3. Changes applied
 
-Both are Vita-only and preprocessor-proven no-ops elsewhere.
+All are Vita-only and preprocessor-proven no-ops elsewhere.
 
 1. **`PSX_NO_NATIVE_PROVENANCE`** (`pgxp_hooks.h`), defined on the Vita runtime target:
    `GTE_NATIVE_PROVENANCE_{LOAD,STORE,ALU,COP2}` and `CPU_RAM_PROVENANCE_STORE` expand to
@@ -181,12 +181,28 @@ Both are Vita-only and preprocessor-proven no-ops elsewhere.
    exactly as they were, and Vita still defaults to `-Os`.
 4. **Helper-call telemetry**: `psx_vita_perf.h` + four `__vita__`-guarded counters
    (`blocks`, `svc`, `irq`, `icache`) and a new `[xg-phase] calls ...` line next to the rate line.
+   The `blocks` increment lives in the `cpu_state.h` `psx_slice_block` wrapper — the call every
+   compiled block leader makes — and **not** in `psx_slice_block_impl`, which the parked default
+   (`g_psx_precise_slice == 0`) never reaches; an impl-side counter reads `blocks=+0` for a whole
+   run. It therefore counts AOT blocks (game + static overlays + recompiled BIOS as executed by
+   generated code); interpreted work is the separate `dirty_interp` figure.
+5. **`PSX_VITA_TIGHT_INLINE`** (CMake option, **default OFF**) — adopted from the sibling
+   `thr-mimo` candidate as an A/B lever: `psx_tight_inline.h` plus the `psx_cyc.h` declarator
+   split (`psx_cyc_base/deps/step` forced inline, `psx_cyc_charge` `noinline`), `psx_slice_block`
+   forced inline, and the `psx_icache.h` routing of `psx_icache_fetch` through the inlined
+   tag-hit path (with the self-recursion fix and the `#undef` at the real export in
+   `psx_icache.c`). Measured on this tree, shard 00: **145 212 → 301 268 text bytes (+107 %)**,
+   and the sibling's hardware A/B measured the cascade as **+14.8 MB SELF and 15 ms slower** per
+   window than the shipped baseline — which is why the default stays the leaf-only
+   `PSX_VITA_HOT_PATH`. `PSX_CYC_HOT` is suppressed while the cascade is active so the two
+   levers remain separately measurable and the cascade reproduces the build it was measured on.
 
 ## 4. Measurements
 
 | artifact | before | after | delta |
 |---|---|---|---|
-| `slus_006.64_full_00.c.obj` text | 196 724 | 145 184 | −26.2 % |
+| `slus_006.64_full_00.c.obj` text (shipped config) | 196 724 | 145 212 | −26.2 % |
+| `slus_006.64_full_00.c.obj` text (`PSX_VITA_TIGHT_INLINE=ON`) | 196 724 | 301 268 | +53 % |
 | `field-overlay_01.c.obj` text | 179 780 | 115 452 | −35.8 % |
 | `field-overlay_03.c.obj` text | 168 572 | 107 208 | −36.4 % |
 | ELF `.text` | 38 880 320 | 31 461 298 | −19.1 % |
@@ -198,10 +214,31 @@ Gates: `SELF ≤ 95 MB` ✓ (51.7 MB), `bss+data ≤ 96 MiB` ✓, zero `scePower
 path, and no new power API use), python suites 6 + 8 + 29 + 9 pass.
 
 Desktop identity: the preprocessed source of the four modified runtime TUs
-(`psx_cycles.c`, `interrupts.c`, `psx_icache.c`, `dirty_ram_interp.c`) and of
-`slus_006.64_full_00.c` is **byte-identical** (path-normalized, code lines only) against the
-pristine tree with the new defines absent; every `main.cpp` edit sits inside `#ifdef __vita__`;
-`XG_GENERATED_TU_OPT` is empty by default, so no source-file property is set on desktop.
+(`psx_cycles.c`, `interrupts.c`, `psx_icache.c`, `dirty_ram_interp.c`), of the C++ TU that
+includes `cpu_state.h` (`gte.cpp`) and of `slus_006.64_full_00.c` is **byte-identical**
+(path-normalized, code lines only) against the pristine tree with the new defines absent — this
+covers the new `psx_tight_inline.h` / `psx_vita_perf.h` includes and the `psx_slice_block`
+counter, because both new headers expand to nothing and the counter is `#ifdef __vita__`. Every
+`main.cpp` edit sits inside `#ifdef __vita__`; `XG_GENERATED_TU_OPT` is empty by default, so no
+source-file property is set on desktop.
+
+### 4.1 Evidence gathered while looking for a bigger lever
+
+- **Size model (two points, measured).** `SELF ≈ 16 292 032 + 1.3445 × text`, fitted from two
+  full builds; residual error +0.05 % / +0.03 %. Useful as a build-time gate: the generated text
+  a change adds can be converted to SELF bytes before paying a 25-minute link.
+- **Codegen-hash trap.** `psx_cyc.h`, `cpu_state.h` and `pgxp_hooks.h` are inputs to the
+  recompiler's `codegen_hash_sources.cmake`. Any edit to them invalidates the baked hash, and
+  `psxrecomp-game` then refuses to run (`FATAL: stale recompiler/runtime codegen hash …
+  rebuild psxrecomp-game`) — which surfaces during the *Vita* configure, far from the cause.
+  Rebuild the host recompiler after every header edit in this set.
+- **E1 rejected — full force-inline of the accessors.** Inlining the load/store accessors at
+  every call site turns a shard into a single 3.4 MB function and the assembler then fails with
+  **1170 `branch out of range` errors**: Thumb-2 conditional branches reach ~1024 KB, and the
+  generated mega-function exceeds it. Not a tuning problem — a codegen shape that cannot work.
+- **E3-full rejected — cascade on every TU.** With the cascade applied to the whole target
+  (including the OpenBIOS/kernel TUs) SELF reaches **102.5 MB > 95 MB** budget. The shipped
+  configuration is the leaf-only variant; the cascade remains available behind the flag.
 
 ## 5. Prediction and what will confirm it
 
@@ -234,6 +271,11 @@ This is honest about the size of the win: **it does not close the 20–50× gap.
    irq per frame    = irq/s   ÷ (same)
    ```
 
+   `blocks/s` counts AOT blocks (the `psx_slice_block` wrapper in `cpu_state.h`); interpreted
+   work is `dirty_interp` and is counted separately. If `blocks/s` is implausible (0, or ≫ guest
+   instructions/s), the counter is the thing to check first — it must be non-zero in a default
+   build where `g_psx_precise_slice == 0`.
+
 4. Decision rules:
    - `host_cycles/insn ≳ 300` with `svc/s` ≪ guest_insns/s → memory-hierarchy bound: attack code
      footprint and hot/cold layout next (the 26 % we just removed is the first slice).
@@ -256,6 +298,11 @@ This is honest about the size of the win: **it does not close the 20–50× gap.
 3. **`PSX_ENABLE_BLOCK_CYCLES` off** would remove the whole per-instruction model (~2.5–3×) and
    drop the runtime back to the legacy flat wait-state model. This is a product decision about
    timing fidelity, not a technical one — flagged, not taken.
+4. **Re-measure the `PSX_VITA_TIGHT_INLINE` cascade on top of the provenance removal.** The
+   sibling A/B measured it against a baseline that still carried the provenance hooks (+14.8 MB,
+   15 ms slower). With 26 % of the generated text gone the trade-off may read differently, but it
+   ships OFF until hardware says otherwise — one build with `-DPSX_VITA_TIGHT_INLINE=ON`, same
+   protocol as above.
 
 ## 7. Verification log
 
